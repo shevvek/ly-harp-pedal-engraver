@@ -65,19 +65,13 @@
 
 % Helper functions
 
-#(define harp-pedal-order
-   '((1 . 0)
-     (0 . 1)
-     (6 . 2)
-     (2 . 3)
-     (3 . 4)
-     (4 . 5)
-     (5 . 6)))
+#(define (is-note? n)
+   (lambda (p) (equal? n (ly:pitch-notename p))))
 
-#(define (harp-pedal< x y)
-   "Compare pitches based on left to right order of harp pedals."
-   (< (assoc-get (ly:pitch-notename x) harp-pedal-order)
-      (assoc-get (ly:pitch-notename y) harp-pedal-order)))
+#(define (sparse-pedal-list changes)
+   (let ((pedal-order '(1 0 6 2 3 4 5)))
+     (map (lambda (n) (find (is-note? n) changes))
+       pedal-order)))
 
 % from scm/chord-name.scm
 #(define (accidental->markup alteration)
@@ -89,21 +83,22 @@
 % adapted from scm/chord-name.scm
 #(define (note-name->short-markup pitch)
    "Like built-in note-name->markup, but always capitalized, and concat the accidental instead of allowing space."
-   (let ((str (note-name->string pitch)))
-     (markup #:concat
-             ((string-capitalize str)
-              (accidental->markup (ly:pitch-alteration pitch))))))
+     (if (ly:pitch? pitch)
+         (markup #:concat
+             ((string-capitalize (note-name->string pitch))
+              (alteration->text-accidental-markup (ly:pitch-alteration pitch))))
+         empty-markup))
 
-text-pedal-change = #(define-scheme-function () ()
+text-pedal-change = 
+#(define-scheme-function (d c b e f g a) 
+  (markup? markup? markup? markup? markup? markup? markup?)
    "Print a text pedal marking"
    #{
      \markup\left-column {
-       \line { e f g a }
-       \line { d c b }
+       \line { $e $f $g $a }
+       \line { $d $c $b }
      }
    #})
-
-#(ly:message "~a" (text-pedal-change))
 
 % Engraver
 
@@ -148,7 +143,7 @@ text-pedal-change = #(define-scheme-function () ()
          (ev #f))
      
      (define (update-pedal-change new-change)
-       (set! change-list (sort new-change harp-pedal<)))
+       (set! change-list new-change))
      
 ;      (define (print-pedal-changes)
 ;        
@@ -156,6 +151,9 @@ text-pedal-change = #(define-scheme-function () ()
        
      
      (make-engraver
+      ((initialize engraver)
+        (ly:message "~a" (ly:context-property context 'keyAlterations)))
+      
       (listeners
        ((harp-pedal-event engraver event)
         (update-pedal-change (ly:event-property event 'pedal-changes))
@@ -164,9 +162,12 @@ text-pedal-change = #(define-scheme-function () ()
        )
 
       ((process-music engraver)
+       (ly:message "~a" (sparse-pedal-list change-list))
        (if ev
-           (let ((grob (ly:engraver-make-grob engraver 'TextScript ev))
-                 (change-markup (text-pedal-change)))
+           (let* ((grob (ly:engraver-make-grob engraver 'TextScript ev))
+                 (completed-list (sparse-pedal-list change-list))
+                 (change-markups (map note-name->short-markup completed-list))
+                 (change-markup (apply text-pedal-change change-markups)))
              (ly:grob-set-property! grob 'text change-markup)
              (ly:grob-set-property! grob 'direction DOWN)
              ))
@@ -205,7 +206,8 @@ setHarpPedals =
 % Test examples
 
 {
+  \key f \major
   c'1
-  \setHarpPedals { f }
+  \setHarpPedals { f es bis des }
   c'1
 }
