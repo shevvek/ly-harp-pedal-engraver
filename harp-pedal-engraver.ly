@@ -104,10 +104,10 @@ other @var{language} is specified."
    (if (and (pair? p) (number? (cdr p)))
        (let ((name (car p))
              (alt (cdr p))
-             (show-nats #t))
+             (hide-nats #f))
          (markup #:concat
            ((string-capitalize (note-name-int->string name))
-            (if (and show-nats (= 0 alt))
+            (if (and hide-nats (= 0 alt))
                 empty-markup
                 (alteration->text-accidental-markup alt)))))
        empty-markup))
@@ -155,10 +155,24 @@ text-pedal-change =
           (update-alist! change-list new-changes)
           (set! ev event)))
        
-       )
+       ((note-event engraver event)
+        (let* ((p (ly:event-property event 'pitch))
+               (name (ly:pitch-notename p))
+               (alt (ly:pitch-alteration p))
+              (pedal-setting (ly:context-property context 'harpPedalSetting #f)))
+          (when (and pedal-setting
+                   (not (= alt
+                           (assoc-get name pedal-setting))))
+            (let ((pedal-event (ly:make-stream-event
+                               (ly:make-event-class 'harp-pedal-event)
+                               `((pedal-changes . ,`((,name . ,alt)))
+                                 (origin . ,(ly:event-property event 'origin))
+                                 (event-cause . ,event)))))
+              (ly:broadcast (ly:context-event-source context) pedal-event))))
+        
+        ))
 
       ((process-music engraver)
-       (ly:message "~a" (ly:context-property context 'harpPedalSetting #f))
        (let ((pedal-setting (ly:context-property context 'harpPedalSetting #f)))
          ; If harpPedalSetting hasn't been initialized, do it based on the key signature
          (unless pedal-setting
@@ -181,7 +195,7 @@ text-pedal-change =
       
       ((stop-translation-timestep engraver)
         (set! ev #f)
-        (set! change-list '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f))))
+        (update-alist! change-list '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f))))
       
       )))
 
@@ -217,4 +231,6 @@ setHarpPedals =
   \setHarpPedals { f es bis des }
   \setHarpPedals { fis }
   c'1
+  
+  f1
 }
