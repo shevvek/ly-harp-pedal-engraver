@@ -1,4 +1,4 @@
-\version "2.25.10"
+\version "2.24.0"
 
 #(use-modules ((ice-9 list) #:select (rassoc))
    (ice-9 receive))
@@ -166,8 +166,7 @@ change->character should take (notename . alteration) as an argument and return 
          (markup #:harp-pedal (string-append
                                (string-concatenate (map change->character left))
                                "|"
-                               (string-concatenate (map change->character right)))
-           )))
+                               (string-concatenate (map change->character right))))))
 
      (make-engraver
       (listeners
@@ -200,64 +199,45 @@ change->character should take (notename . alteration) as an argument and return 
                                   `((pitch-alist . ,`((,name . ,alt)))
                                     (origin . ,(ly:event-property event 'origin))
                                     (event-cause . ,event)))))
-                (ly:broadcast (ly:context-event-source context) pedal-event))))))
-
-       )
+                (ly:broadcast (ly:context-event-source context) pedal-event)))))))
 
       ((process-music engraver)
-       (let ((setting-alist (ly:context-property context 'harpPedalSetting #f)))
-         ; If harpPedalSetting hasn't been initialized, do it based on the key signature
-         (unless setting-alist
-           ; If this context is Staff-like, we grab the keysign here,
-           ; if not, we get it from the first Staff-like child context
-           ; If the engraver is consisted to a context with no direct Staff-like children,
-           ; it will still work, but will not grab key alterations
-           (let ((keysig (if (staff-like? context)
-                             (ly:context-property context 'keyAlterations)
-                             (let ((child-staves (filter staff-like? (ly:context-children context))))
-                               (if (pair? child-staves)
-                                   (ly:context-property (car child-staves) 'keyAlterations)
-                                   '())))))
-             (set! setting-alist
-                   (update-alist! '((1 . 0) (0 . 0) (6 . 0) (2 . 0) (3 . 0) (4 . 0) (5 . 0))
-                     keysig))))
+       ; If we got a pedal event this time step, print it. The event-cause will be the most recent event received.
+       (when ev
+         (let* ((setting-alist (ly:context-property context 'harpPedalSetting #f))
+                (grob (ly:engraver-make-grob engraver 'TextScript ev))
+                (style (ly:context-property context 'harpPedalStyle 'hybrid))
+                (reset? (every cdr change-alist))
+                (text-output (ly:context-property context 'harpPedalTextMarkup text-pedal-change))
+                (graphical-output (ly:context-property context 'harpPedalGraphicalMarkup identity))
+                (change-markup (cond
+                                ((or (eqv? style 'text)
+                                     (and (eqv? style 'hybrid)
+                                          (not reset?)))
+                                 ; doing it this way assumes that all the alist operations preserve order
+                                 (apply text-output
+                                   (map pitch-class->markup change-alist)))
 
-         ; If we got a pedal event this time step, print it. The event-cause will be the most recent event received.
-         (when ev
-           (let* ((grob (ly:engraver-make-grob engraver 'TextScript ev))
-                  (style (ly:context-property context 'harpPedalStyle 'hybrid))
-                  (reset? (every cdr change-alist))
-                  (text-output (ly:context-property context 'harpPedalTextMarkup text-pedal-change))
-                  (graphical-output (ly:context-property context 'harpPedalGraphicalMarkup identity))
-                  (change-markup (cond
-                                  ((or (eqv? style 'text)
-                                       (and (eqv? style 'hybrid)
-                                            (not reset?)))
-                                   ; doing it this way assumes that all the alist operations preserve order
-                                   (apply text-output
-                                     (map pitch-class->markup change-alist)))
+                                ; If all markings are graphical, always circle changes
+                                ((and setting-alist
+                                      (eqv? style 'graphical))
+                                 (graphical-output
+                                  (pedals-graphic (lambda (change)
+                                                    (change->circled-pedal-character setting-alist change)))))
 
-                                  ; If all markings are graphical, always circle changes
-                                  ((eqv? style 'graphical)
-                                   (graphical-output
-                                    (pedals-graphic (lambda (change)
-                                                      (change->circled-pedal-character setting-alist change)))))
-
-                                  ; In hybrid style, don't circle changes
-                                  ((and (eqv? style 'hybrid)
-                                        reset?)
-                                   (graphical-output
-                                    (pedals-graphic (compose alteration->pedal-character cdr)))))))
-             (ly:grob-set-property! grob 'text change-markup)
-             (ly:grob-set-property! grob 'after-line-breaking ly:side-position-interface::move-to-extremal-staff)
-             (ly:grob-set-property! grob 'outside-staff-priority 500)
-             (ly:grob-set-property! grob 'direction DOWN)
-             ))
-
-         ; Update the pedal setting based on change-alist
-         ; Do this after printing the changes, in case we need to print circles based on the last setting
-         (update-alist! setting-alist (filter cdr change-alist))
-         (ly:context-set-property! context 'harpPedalSetting setting-alist))
+                                ; In hybrid style or in absence of a keysig, don't circle changes
+                                (else
+                                 (graphical-output
+                                  (pedals-graphic (compose alteration->pedal-character cdr)))))))
+           (ly:grob-set-property! grob 'text change-markup)
+           (ly:grob-set-property! grob 'after-line-breaking ly:side-position-interface::move-to-extremal-staff)
+           (ly:grob-set-property! grob 'outside-staff-priority 500)
+           (ly:grob-set-property! grob 'direction DOWN)
+           ; Update the pedal setting based on change-alist
+           ; Do this after printing the changes, in case we need to print circles based on the last setting
+           (update-alist! setting-alist (filter cdr change-alist))
+           (ly:context-set-property! context 'harpPedalSetting setting-alist)
+           ))
 
        ; Don't warn about contradictory notes if the user is taking responsibility for pedal markings
        (when (ly:context-property context 'harpPedalAutoUpdate #t)
@@ -282,9 +262,9 @@ change->character should take (notename . alteration) as an argument and return 
 
 setHarpPedals =
 #(define-music-function (change) (ly:music?)
-     (make-music
-      'HarpPedalEvent
-      'pitch-alist (pitch-list->alist (music-pitches change))))
+   (make-music
+    'HarpPedalEvent
+    'pitch-alist (pitch-list->alist (music-pitches change))))
 
 % For example purposes only
 graphical-pedal-markup =
@@ -327,7 +307,7 @@ LH = {
   \key d \major
   s1
   \cueDuring #"test" #DOWN { s1 }
- %  bis1\p_"foo"
+  %  bis1\p_"foo"
   c'1
 }
 
