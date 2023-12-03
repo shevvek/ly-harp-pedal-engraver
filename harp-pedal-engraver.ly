@@ -1,4 +1,4 @@
-\version "2.24.0"
+\version "2.25.10"
 
 #(use-modules ((ice-9 list)
               #:select (rassoc)))
@@ -68,6 +68,10 @@
 
 % Helper functions
 
+% from https://www.mail-archive.com/lilypond-user@gnu.org/msg131484.html
+#(define (staff-like? ctx)
+    (eq? ctx (ly:context-find ctx 'Staff)))
+
 % from scm/chord-name.scm
 #(define (accidental->markup alteration)
   "Return accidental markup for ALTERATION."
@@ -135,11 +139,10 @@ text-pedal-change =
 
 #(define (Harp_pedal_engraver context)
    (let ((change-list '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f)))
-         (ev #f))
+         (ev #f)
+         (notes '()))
      
      (make-engraver
-;       ((initialize engraver)
-;         (ly:message "~a" (ly:context-property context 'keyAlterations)))
       
       (listeners
        ((harp-pedal-event engraver event)
@@ -150,38 +153,59 @@ text-pedal-change =
                    (and old-alt
                         (not (equal? old-alt (cdr el))))))
                new-changes)
-              (ly:input-warning (*location*) "Harp_pedal_engraver: simultaneous contradictory pedal change received."))
+              (ly:input-warning (ly:event-property event 'origin (*location*))
+                "Harp_pedal_engraver: simultaneous contradictory pedal change received."))
 
           (update-alist! change-list new-changes)
           (set! ev event)))
-       
+
        ((note-event engraver event)
         (let* ((p (ly:event-property event 'pitch))
                (name (ly:pitch-notename p))
                (alt (ly:pitch-alteration p))
-              (pedal-setting (ly:context-property context 'harpPedalSetting #f)))
+               (pedal-setting (ly:context-property context 'harpPedalSetting #f)))
+          (set! notes (cons event notes))
           (when (and pedal-setting
-                   (not (= alt
-                           (assoc-get name pedal-setting))))
+                     (not (= alt
+                             (assoc-get name pedal-setting))))
             (let ((pedal-event (ly:make-stream-event
-                               (ly:make-event-class 'harp-pedal-event)
-                               `((pedal-changes . ,`((,name . ,alt)))
-                                 (origin . ,(ly:event-property event 'origin))
-                                 (event-cause . ,event)))))
+                                (ly:make-event-class 'harp-pedal-event)
+                                `((pedal-changes . ,`((,name . ,alt)))
+                                  (origin . ,(ly:event-property event 'origin))
+                                  (event-cause . ,event)))))
               (ly:broadcast (ly:context-event-source context) pedal-event))))
         
         ))
 
       ((process-music engraver)
+       
+       
        (let ((pedal-setting (ly:context-property context 'harpPedalSetting #f)))
          ; If harpPedalSetting hasn't been initialized, do it based on the key signature
          (unless pedal-setting
+           ; If this context is Staff-like, we grab the keysign here, if not, we get it from the first Staff-like child context
+           ; If the engraver is consisted to a context with no direct Staff-like children, it will still work, but will not grab key alterations
+           (let ((keysig (if (staff-like? context)
+                             (ly:context-property context 'keyAlterations)
+                             (let ((child-staves (filter staff-like? (ly:context-children context))))
+                               (if (pair? child-staves)
+                                   (ly:context-property (car child-staves) 'keyAlterations)
+                                   '())))))
            (set! pedal-setting
                  (update-alist! '((1 . 0) (0 . 0) (6 . 0) (2 . 0) (3 . 0) (4 . 0) (5 . 0))
-                   (ly:context-property context 'keyAlterations))))
+                   keysig)))
          ; Update the pedal setting based on change-list
          (update-alist! pedal-setting (filter cdr change-list))
-         (ly:context-set-property! context 'harpPedalSetting pedal-setting))
+         (ly:context-set-property! context 'harpPedalSetting pedal-setting)))
+       
+       (for-each (lambda (note)
+                   (let* ((note-pitch (ly:event-property note 'pitch))
+                          (pedal-change-alt (assoc-get (ly:pitch-notename note-pitch) change-list)))
+                     (when (and pedal-change-alt
+                                (not (= pedal-change-alt (ly:pitch-alteration note-pitch))))
+                       (ly:input-warning (ly:event-property note 'origin (*location*))
+                         "Harp_pedal_engraver: note event contradicts simultaneous pedal change"))))
+         notes)
            
        ; If we got a pedal event this time step, print it
        (if ev
@@ -189,12 +213,15 @@ text-pedal-change =
                  (change-markups (map pitch-class->markup change-list))
                  (change-markup (apply text-pedal-change change-markups))) ; doing it this way assumes that all the alist operations preserve order
              (ly:grob-set-property! grob 'text change-markup)
+             (ly:grob-set-property! grob 'after-line-breaking ly:side-position-interface::move-to-extremal-staff)
+             (ly:grob-set-property! grob 'outside-staff-priority 500)
              (ly:grob-set-property! grob 'direction DOWN)
              ))
        )
       
       ((stop-translation-timestep engraver)
         (set! ev #f)
+        (set! notes '())
         (update-alist! change-list '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f))))
       
       )))
@@ -203,7 +230,7 @@ text-pedal-change =
 
 \layout {
   \context {
-    \Staff
+    \PianoStaff
     \consists #Harp_pedal_engraver
   }
 }
@@ -225,12 +252,21 @@ setHarpPedals =
 
 % Test examples
 
-{
-  \key f \major
+RH = {
+  \key d \major
+  cis'1
   c'1
-  \setHarpPedals { f es bis des }
-  \setHarpPedals { fis }
-  c'1
-  
-  f1
+  \setHarpPedals { dis bes }
+  fis'
 }
+
+LH = {
+  \key d \major
+  s1*2
+  bis1\p_"foo"
+}
+
+\new PianoStaff <<
+  \new Staff \RH
+  \new Staff \LH
+>>
