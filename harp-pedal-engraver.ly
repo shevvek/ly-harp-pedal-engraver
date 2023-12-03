@@ -49,7 +49,7 @@
 #(define (staff-like? ctx)
    (eq? ctx (ly:context-find ctx 'Staff)))
 
-#(define (pedal-setting? s)
+#(define (pedal-alist? s)
    "Type predicate that checks pedal setting alist for correct pedal order and valid accidentals"
    (and (alist? s)
         (equal?
@@ -113,9 +113,9 @@ other @var{language} is specified."
      ((1/2) "v")
      (else "")))
 
-#(define (change->circled-pedal-character pedal-setting change)
+#(define (change->circled-pedal-character pedal-alist change)
    (let ((new-alt (cdr change))
-         (old-alt (assoc-get (car change) pedal-setting)))
+         (old-alt (assoc-get (car change) pedal-alist)))
      (if (and new-alt
               (not (= new-alt old-alt)))
          (string-append "o" (alteration->pedal-character new-alt))
@@ -134,7 +134,7 @@ text-pedal-change =
 
 % Context properties
 
-#(translator-property-description 'harpPedalSetting pedal-setting? "The current harp pedal setting.")
+#(translator-property-description 'harpPedalSetting pedal-alist? "The current harp pedal setting.")
 #(translator-property-description 'harpPedalStyle symbol?
    "Valid options: 'graphical, 'text, 'hybrid (default). With 'hybrid, incremental changes are printed as text, 
 while resets of all 7 pedals are printed graphically.")
@@ -149,12 +149,12 @@ Use this for example to add an enclosure around graphical pedal markings.")
 % Engraver
 
 #(define (Harp_pedal_engraver context)
-   (let ((change-list '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f)))
+   (let ((change-alist '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f)))
          (ev #f)
          (notes '()))
 
      (define (pedals-graphic change->character)
-       "Splits change-list into left and right pedals, maps onto each the procedure 
+       "Splits change-alist into left and right pedals, maps onto each the procedure 
 change->character, then concats the resulting strings and returns the resulting harp-pedal markup. 
 change->character should take (notename . alteration) as an argument and return a string."
        (receive (left right)
@@ -162,7 +162,7 @@ change->character should take (notename . alteration) as an argument and return 
                       (or (= 1 (car el))
                           (= 0 (car el))
                           (= 6 (car el))))
-           change-list)
+           change-alist)
          (markup #:harp-pedal (string-append
                                (string-concatenate (map change->character left))
                                "|"
@@ -175,14 +175,14 @@ change->character should take (notename . alteration) as an argument and return 
         (let ((new-changes (ly:event-property event 'pitch-alist)))
           (when (any
                  (lambda (el)
-                   (let ((old-alt (assoc-get (car el) change-list)))
+                   (let ((old-alt (assoc-get (car el) change-alist)))
                      (and old-alt
                           (not (equal? old-alt (cdr el))))))
                  new-changes)
             (ly:input-warning (ly:event-property event 'origin (*location*))
               "Harp_pedal_engraver: simultaneous contradictory pedal change received."))
 
-          (update-alist! change-list new-changes)
+          (update-alist! change-alist new-changes)
           (set! ev event)))
 
        ((note-event engraver event)
@@ -190,11 +190,11 @@ change->character should take (notename . alteration) as an argument and return 
           (let* ((p (ly:event-property event 'pitch))
                  (name (ly:pitch-notename p))
                  (alt (ly:pitch-alteration p))
-                 (pedal-setting (ly:context-property context 'harpPedalSetting #f)))
+                 (setting-alist (ly:context-property context 'harpPedalSetting #f)))
             (set! notes (cons event notes))
-            (when (and pedal-setting
+            (when (and setting-alist
                        (not (= alt
-                               (assoc-get name pedal-setting))))
+                               (assoc-get name setting-alist))))
               (let ((pedal-event (ly:make-stream-event
                                   (ly:make-event-class 'harp-pedal-event)
                                   `((pitch-alist . ,`((,name . ,alt)))
@@ -205,9 +205,9 @@ change->character should take (notename . alteration) as an argument and return 
        )
 
       ((process-music engraver)
-       (let ((pedal-setting (ly:context-property context 'harpPedalSetting #f)))
+       (let ((setting-alist (ly:context-property context 'harpPedalSetting #f)))
          ; If harpPedalSetting hasn't been initialized, do it based on the key signature
-         (unless pedal-setting
+         (unless setting-alist
            ; If this context is Staff-like, we grab the keysign here,
            ; if not, we get it from the first Staff-like child context
            ; If the engraver is consisted to a context with no direct Staff-like children,
@@ -218,7 +218,7 @@ change->character should take (notename . alteration) as an argument and return 
                                (if (pair? child-staves)
                                    (ly:context-property (car child-staves) 'keyAlterations)
                                    '())))))
-             (set! pedal-setting
+             (set! setting-alist
                    (update-alist! '((1 . 0) (0 . 0) (6 . 0) (2 . 0) (3 . 0) (4 . 0) (5 . 0))
                      keysig))))
 
@@ -226,7 +226,7 @@ change->character should take (notename . alteration) as an argument and return 
          (when ev
            (let* ((grob (ly:engraver-make-grob engraver 'TextScript ev))
                   (style (ly:context-property context 'harpPedalStyle 'hybrid))
-                  (reset? (every cdr change-list))
+                  (reset? (every cdr change-alist))
                   (text-output (ly:context-property context 'harpPedalTextMarkup text-pedal-change))
                   (graphical-output (ly:context-property context 'harpPedalGraphicalMarkup identity))
                   (change-markup (cond
@@ -235,13 +235,13 @@ change->character should take (notename . alteration) as an argument and return 
                                             (not reset?)))
                                    ; doing it this way assumes that all the alist operations preserve order
                                    (apply text-output
-                                     (map pitch-class->markup change-list)))
+                                     (map pitch-class->markup change-alist)))
 
                                   ; If all markings are graphical, always circle changes
                                   ((eqv? style 'graphical)
                                    (graphical-output
                                     (pedals-graphic (lambda (change)
-                                                      (change->circled-pedal-character pedal-setting change)))))
+                                                      (change->circled-pedal-character setting-alist change)))))
 
                                   ; In hybrid style, don't circle changes
                                   ((and (eqv? style 'hybrid)
@@ -254,16 +254,16 @@ change->character should take (notename . alteration) as an argument and return 
              (ly:grob-set-property! grob 'direction DOWN)
              ))
 
-         ; Update the pedal setting based on change-list
+         ; Update the pedal setting based on change-alist
          ; Do this after printing the changes, in case we need to print circles based on the last setting
-         (update-alist! pedal-setting (filter cdr change-list))
-         (ly:context-set-property! context 'harpPedalSetting pedal-setting))
+         (update-alist! setting-alist (filter cdr change-alist))
+         (ly:context-set-property! context 'harpPedalSetting setting-alist))
 
        ; Don't warn about contradictory notes if the user is taking responsibility for pedal markings
        (when (ly:context-property context 'harpPedalAutoUpdate #t)
          (for-each (lambda (note)
                      (let* ((note-pitch (ly:event-property note 'pitch))
-                            (pedal-change-alt (assoc-get (ly:pitch-notename note-pitch) change-list)))
+                            (pedal-change-alt (assoc-get (ly:pitch-notename note-pitch) change-alist)))
                        (when (and pedal-change-alt
                                   (not (= pedal-change-alt (ly:pitch-alteration note-pitch))))
                          (ly:input-warning (ly:event-property note 'origin (*location*))
@@ -274,7 +274,7 @@ change->character should take (notename . alteration) as an argument and return 
       ((stop-translation-timestep engraver)
        (set! ev #f)
        (set! notes '())
-       (update-alist! change-list '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f))))
+       (update-alist! change-alist '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f))))
 
       )))
 
@@ -282,10 +282,9 @@ change->character should take (notename . alteration) as an argument and return 
 
 setHarpPedals =
 #(define-music-function (change) (ly:music?)
-   (let ((change-list (pitch-list->alist (music-pitches change))))
      (make-music
       'HarpPedalEvent
-      'pitch-alist change-list)))
+      'pitch-alist (pitch-list->alist (music-pitches change))))
 
 % For example purposes only
 graphical-pedal-markup =
@@ -320,7 +319,7 @@ RH = {
   \key d \major
   cis'1
   c'1
-  <>\setHarpPedals { dis bes }
+  <>-\tweak TextScript.font-size #-3 \setHarpPedals { dis bes }
   fis'
 }
 
@@ -328,7 +327,7 @@ LH = {
   \key d \major
   s1
   \cueDuring #"test" #DOWN { s1 }
-  bis1\p_"foo"
+ %  bis1\p_"foo"
   c'1
 }
 
