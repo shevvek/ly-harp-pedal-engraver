@@ -39,7 +39,7 @@
 #(define-event!
   'HarpPedalEvent
   '((description . "Harp pedal change")
-    (types . (harp-pedal-event event))))
+    (types . (post-event harp-pedal-event event))))
 
 % Grob definitions
 
@@ -172,7 +172,7 @@ change->character should take (notename . alteration) as an argument and return 
      (make-engraver
       (listeners
        ((harp-pedal-event engraver event)
-        (let ((new-changes (ly:event-property event 'pedal-changes)))
+        (let ((new-changes (ly:event-property event 'pitch-alist)))
           (when (any
                  (lambda (el)
                    (let ((old-alt (assoc-get (car el) change-list)))
@@ -197,7 +197,7 @@ change->character should take (notename . alteration) as an argument and return 
                                (assoc-get name pedal-setting))))
               (let ((pedal-event (ly:make-stream-event
                                   (ly:make-event-class 'harp-pedal-event)
-                                  `((pedal-changes . ,`((,name . ,alt)))
+                                  `((pitch-alist . ,`((,name . ,alt)))
                                     (origin . ,(ly:event-property event 'origin))
                                     (event-cause . ,event)))))
                 (ly:broadcast (ly:context-event-source context) pedal-event))))))
@@ -278,7 +278,14 @@ change->character should take (notename . alteration) as an argument and return 
 
       )))
 
-% Context mod
+% Music functions
+
+setHarpPedals =
+#(define-music-function (change) (ly:music?)
+   (let ((change-list (pitch-list->alist (music-pitches change))))
+     (make-music
+      'HarpPedalEvent
+      'pitch-alist change-list)))
 
 % For example purposes only
 graphical-pedal-markup =
@@ -289,6 +296,8 @@ graphical-pedal-markup =
      \markup\box $pedals
    #})
 
+% Context mod
+
 \layout {
   \context {
     \PianoStaff
@@ -297,20 +306,6 @@ graphical-pedal-markup =
     %  harpPedalGraphicalMarkup = #graphical-pedal-markup
   }
 }
-
-% Music functions
-
-setHarpPedals =
-#(define-scheme-function (change) (ly:music?)
-   (let* ((change-list (pitch-list->alist (music-pitches change)))
-          (pedal-event (ly:make-stream-event
-                        (ly:make-event-class 'harp-pedal-event)
-                        `((pedal-changes . ,change-list))))
-          (broadcast-pedals (lambda (context)
-                              (ly:broadcast (ly:context-event-source context) pedal-event)))
-          )
-     (make-apply-context broadcast-pedals)))
-
 
 % Test examples
 
@@ -325,7 +320,7 @@ RH = {
   \key d \major
   cis'1
   c'1
-  \setHarpPedals { dis bes }
+  <>\setHarpPedals { dis bes }
   fis'
 }
 
@@ -338,6 +333,6 @@ LH = {
 }
 
 \new PianoStaff <<
-  %  \new Staff \RH
+  \new Staff \RH
   \new Staff \LH
 >>
