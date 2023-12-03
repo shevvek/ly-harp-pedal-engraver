@@ -1,7 +1,7 @@
 \version "2.25.10"
 
-#(use-modules ((ice-9 list)
-              #:select (rassoc)))
+#(use-modules ((ice-9 list) #:select (rassoc))
+   (ice-9 receive))
 
 % Boilerplate (should be factored out to a library)
 
@@ -124,6 +124,47 @@ other @var{language} is specified."
            alist2))
    alist1)
 
+#(define (alteration->pedal-character alt)
+     (case alt
+       ((-1/2) "^")
+       ((0) "-" )
+       ((1/2) "v")
+       (else "")))
+
+#(define (graphical-harp-string pedal-setting pedal-changes)
+   (define (change->circled-pedal-character change)
+     (let ((new-alt (cdr change))
+           (old-alt (assoc-get (car change) pedal-setting)))
+       (if (and new-alt
+                (not (= new-alt old-alt)))
+           (string-append "o" (alteration->pedal-character new-alt))
+           (alteration->pedal-character old-alt))))
+   (receive (left right)
+     (partition (lambda (el)
+                  (or (= 1 (car el))
+                      (= 0 (car el))
+                      (= 6 (car el))))
+       pedal-changes)
+     (if (every cdr pedal-changes)
+         (string-concatenate
+          (apply append
+            (map alteration->pedal-character (map cdr left))
+            '("|")
+            (map alteration->pedal-character (map cdr right))
+            '()))
+         (string-concatenate
+          (apply append
+            (map change->circled-pedal-character left)
+            '("|")
+            (map change->circled-pedal-character right)
+            '()))
+         )))
+
+#(ly:message "~a" (graphical-harp-string 
+                   '((1 . 0) (0 . 0) (6 . 1/2) (2 . -1/2) (3 . 0) (4 . 0) (5 . 0))
+                    '((1 . #f) (0 . #f) (6 . #f) (2 . 0) (3 . 1/2) (4 . #f) (5 . #f))
+                    ))
+
 text-pedal-change = 
 #(define-scheme-function (d c b e f g a) 
   (markup? markup? markup? markup? markup? markup? markup?)
@@ -143,7 +184,6 @@ text-pedal-change =
          (notes '()))
      
      (make-engraver
-      
       (listeners
        ((harp-pedal-event engraver event)
         (let ((new-changes (ly:event-property event 'pedal-changes)))
@@ -173,13 +213,11 @@ text-pedal-change =
                                 `((pedal-changes . ,`((,name . ,alt)))
                                   (origin . ,(ly:event-property event 'origin))
                                   (event-cause . ,event)))))
-              (ly:broadcast (ly:context-event-source context) pedal-event))))
+              (ly:broadcast (ly:context-event-source context) pedal-event)))))
         
-        ))
+        )
 
       ((process-music engraver)
-       
-       
        (let ((pedal-setting (ly:context-property context 'harpPedalSetting #f)))
          ; If harpPedalSetting hasn't been initialized, do it based on the key signature
          (unless pedal-setting
@@ -207,7 +245,7 @@ text-pedal-change =
                          "Harp_pedal_engraver: note event contradicts simultaneous pedal change"))))
          notes)
            
-       ; If we got a pedal event this time step, print it
+       ; If we got a pedal event this time step, print it. The event-cause will be the most recent event received.
        (if ev
            (let* ((grob (ly:engraver-make-grob engraver 'TextScript ev))
                  (change-markups (map pitch-class->markup change-list))
