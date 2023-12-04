@@ -45,10 +45,6 @@
 
 % Predicates
 
-% from https://www.mail-archive.com/lilypond-user@gnu.org/msg131484.html
-#(define (staff-like? ctx)
-   (eq? ctx (ly:context-find ctx 'Staff)))
-
 #(define (pedal-alist? s)
    "Type predicate that checks pedal setting alist for correct pedal order and valid accidentals"
    (and (alist? s)
@@ -136,8 +132,8 @@ text-pedal-change =
 
 #(translator-property-description 'harpPedalSetting pedal-alist? "The current harp pedal setting.")
 #(translator-property-description 'harpPedalStyle symbol?
-   "Valid options: 'graphical, 'text, 'hybrid (default). With 'hybrid, incremental changes are printed as text, 
-while resets of all 7 pedals are printed graphically.")
+   "Valid options: 'graphical, 'text, 'hybrid-circles, 'hybrid (default). With 'hybrid, incremental changes are printed as text, 
+while resets of all 7 pedals are printed graphically. 'hybrid-circles is the same but prints diagrams with circles around changes.")
 #(translator-property-description 'harpPedalAutoUpdate boolean?
    "If #t (default), check notes against the current pedal setting and print changes automatically.")
 #(translator-property-description 'harpPedalTextMarkup procedure?
@@ -212,23 +208,30 @@ change->character should take (notename . alteration) as an argument and return 
                 (graphical-output (ly:context-property context 'harpPedalGraphicalMarkup identity))
                 (change-markup (cond
                                 ((or (eqv? style 'text)
-                                     (and (eqv? style 'hybrid)
+                                     (and (or (eqv? style 'hybrid)
+                                              (eqv? style 'hybrid-circles))
                                           (not reset?)))
                                  ; doing it this way assumes that all the alist operations preserve order
                                  (apply text-output
                                    (map pitch-class->markup change-alist)))
 
-                                ; If all markings are graphical, always circle changes
+                                ; If style is graphical, or hybrid-circles and this is a full reset
+                                ; Circle changes as long as we have a previous pedal setting
                                 ((and setting-alist
-                                      (eqv? style 'graphical))
+                                      (or (eqv? style 'graphical)
+                                          (and reset? (eqv? style 'hybrid-circles))))
                                  (graphical-output
                                   (pedals-graphic (lambda (change)
                                                     (change->circled-pedal-character setting-alist change)))))
 
-                                ; In hybrid style or in absence of a keysig, don't circle changes
-                                (else
+                                ; In hybrid style don't circle changes for full resets
+                                ((and reset? (eqv? style 'hybrid))
                                  (graphical-output
                                   (pedals-graphic (compose alteration->pedal-character cdr)))))))
+           (when (and (not reset?)
+                      (not setting-alist))
+             (ly:input-warning (ly:event-property ev 'origin (*location*))
+               "Harp_pedal_engraver: received incomplete initial pedal setting"))
            (ly:grob-set-property! grob 'text change-markup)
            (ly:grob-set-property! grob 'after-line-breaking ly:side-position-interface::move-to-extremal-staff)
            (ly:grob-set-property! grob 'outside-staff-priority 500)
@@ -281,7 +284,7 @@ graphical-pedal-markup =
   \context {
     \PianoStaff
     \consists #Harp_pedal_engraver
-    % harpPedalStyle = #'graphical
+    harpPedalStyle = #'hybrid-circles
     %  harpPedalGraphicalMarkup = #graphical-pedal-markup
   }
 }
