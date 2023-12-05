@@ -337,7 +337,7 @@ LH = \relative c {
   <c aes'>1
   % Simultaneous explicit pedal changes will also be combined
   <bes ges'>1\setHarpPedals { ges }
-  R1 
+  R1
   c1
 }
 
@@ -347,7 +347,7 @@ LH = \relative c {
   \consists #Harp_pedal_engraver
   % see what happens when harpPedalStyle is set to 'hybrid, 'hybrid-circles, and 'graphical
   % 'graphical is probably only useful for pedagogical materials
-  harpPedalStyle = #'text
+  harpPedalStyle = #'hybrid-circles
   \textLengthOn % for purposes of the example
 } <<
   \new Staff \RH
@@ -361,8 +361,7 @@ RH = \relative c' {
   % Incomplete initialization
   <>\setHarpPedals { d cis }
   d1
-  <>\setHarpPedals { bes c d es f g a }
-  R1
+  R1-\setHarpPedals { bes c d es f g a }
   % Simultaneous contradictory explicit pedal changes
   a'1\setHarpPedals { aes }
   % Simultaneous contradictory explicit pedal changes
@@ -395,129 +394,129 @@ LH = \relative c {
   bis2 <cis ais>2
   R1*2
 }
-
-\markup\bold "warnings and edge cases:"
-
-\new PianoStaff \with {
-  \consists #Harp_pedal_engraver
-  harpPedalStyle = #'text
-  \textLengthOn % for purposes of the example
-} <<
-  \new Staff \RH
-  \new Staff \LH
->>
-
-% Advanced use cases
-% position above, custom text format, custom graphical format, tweak grob, tweak implicit grob?, persistent tweaks, disabling autoupdate during cues
-
-testcue = \relative c' {
-  s1*3
-  r4 c d e
-  r4 fis gis ais
-}
-
-\addQuote "test" \testcue
-
-example = \relative c' {
-  % ^ can be used to position a marking above the context
-  <>^\setHarpPedals { d cis b e fis g a }
-  <d fis a>1
-  % style and other context properties can be updated within the music
-  % note that you must include the context (Staff, PianoStaff, etc) 
-  % where Harp_pedal_engraver was consisted
-  \once\set Staff.harpPedalStyle = #'hybrid
-  % explicit pedal changes can be tweaked
-  <des f bes>-\tweak color #red \setHarpPedals { des c bes es f ges aes }
-  \unset Staff.harpPedalTextMarkup
-  % Pedal markings print outside normal TextScripts
-  % They are just TextScripts so \override TextScript affects both them and other markings
-  % Notice that if Staff is removed from the override, it does not affect the pedal markings
-  \override Staff.TextScript.font-size = #-3
-  b2\p_"foo" b'2\setHarpPedals { aes }
-  % notes in cues will trigger automatic pedal changes
-  \cueDuring #"test" #DOWN {
-    R1
-  }
-  % to avoid this, turn off autoupdate during cues
-  \cueDuring #"test" #DOWN {
-    \set Staff.harpPedalAutoUpdate = ##f
-    R1
-    \unset Staff.harpPedalAutoUpdate
-  }
-}
-
-% A custom text markup function can be used to reorder the note names depending on the harpist's preference
-% And to add formatting, enclosures, etc.
-custom-pedal-text =
-#(define-scheme-function (d c b e f g a)
-   (markup? markup? markup? markup? markup? markup? markup?)
-   "Print a text pedal marking"
-   #{
-     \markup\box\left-column {
-       \line { $b $c $d }
-       \line { $e $f $g $a }
-     }
-   #})
-
-% Similarly, enclosures can be added around the graphical pedal markings
-custom-pedal-graphic =
-#(define-scheme-function (pedals)
-   (markup?)
-   "Print a graphical pedal marking"
-   #{
-     \markup\box $pedals
-   #})
-
-\markup\bold "advanced usage:"
-
-% Harp_pedal_engraver functions when consisted to a Staff, though this is probably not the typical usage
-\new Staff \with {
-  \consists #Harp_pedal_engraver
-  harpPedalStyle = #'text
-  harpPedalTextMarkup = #custom-pedal-text
-  harpPedalGraphicMarkup = #custom-pedal-graphic
-  \textLengthOn % for purposes of the example
-} \example
-
-% Advanced use cases example 2
-
-% Another way to persistently modify pedal markings is to create a new function with your tweaks
-tweakedSetHarpPedals = 
-#(define-music-function (m) (ly:music?)
-   #{
-     -\tweak color #red
-     \setHarpPedals $m
-   #})
-
-% Probably the best way to deal with cues is to turn off autoupdate in your cue functions
-fixedCueDuring = 
-#(define-music-function (cue dir rests) (string? number? ly:music?)
-   #{
-     \cueDuring #cue #dir {
-       \set GrandStaff.harpPedalAutoUpdate = ##f
-       $rests
-       \set GrandStaff.harpPedalAutoUpdate = ##t
-     }
-   #}
-   )
-
-RH = \relative c' {
-  c1\tweakedSetHarpPedals { d c b e fis g a }
-  R1*2
-  \fixedCueDuring #"test" #DOWN {
-    R1*2
-  }
-}
-
-LH = \relative c {
-  \clef bass
-  R1*5
-}
-
-\new PianoStaff \with {
-  \consists #Harp_pedal_engraver
-  \textLengthOn % for purposes of the example
-} <<
-  \new Staff \RH
-  \new Staff \LH
->>
+% 
+% \markup\bold "warnings and edge cases:"
+% 
+% \new PianoStaff \with {
+%   \consists #Harp_pedal_engraver
+%   harpPedalStyle = #'text
+%   \textLengthOn % for purposes of the example
+% } <<
+%   \new Staff \RH
+%   \new Staff \LH
+% >>
+% 
+% % Advanced use cases
+% % position above, custom text format, custom graphical format, tweak grob, tweak implicit grob?, persistent tweaks, disabling autoupdate during cues
+% 
+% testcue = \relative c' {
+%   s1*3
+%   r4 c d e
+%   r4 fis gis ais
+% }
+% 
+% \addQuote "test" \testcue
+% 
+% example = \relative c' {
+%   % ^ can be used to position a marking above the context
+%   <>^\setHarpPedals { d cis b e fis g a }
+%   <d fis a>1
+%   % style and other context properties can be updated within the music
+%   % note that you must include the context (Staff, PianoStaff, etc) 
+%   % where Harp_pedal_engraver was consisted
+%   \once\set Staff.harpPedalStyle = #'hybrid
+%   % explicit pedal changes can be tweaked
+%   <des f bes>-\tweak color #red \setHarpPedals { des c bes es f ges aes }
+%   \unset Staff.harpPedalTextMarkup
+%   % Pedal markings print outside normal TextScripts
+%   % They are just TextScripts so \override TextScript affects both them and other markings
+%   % Notice that if Staff is removed from the override, it does not affect the pedal markings
+%   \override Staff.TextScript.font-size = #-3
+%   b2\p_"foo" b'2\setHarpPedals { aes }
+%   % notes in cues will trigger automatic pedal changes
+%   \cueDuring #"test" #DOWN {
+%     R1
+%   }
+%   % to avoid this, turn off autoupdate during cues
+%   \cueDuring #"test" #DOWN {
+%     \set Staff.harpPedalAutoUpdate = ##f
+%     R1
+%     \unset Staff.harpPedalAutoUpdate
+%   }
+% }
+% 
+% % A custom text markup function can be used to reorder the note names depending on the harpist's preference
+% % And to add formatting, enclosures, etc.
+% custom-pedal-text =
+% #(define-scheme-function (d c b e f g a)
+%    (markup? markup? markup? markup? markup? markup? markup?)
+%    "Print a text pedal marking"
+%    #{
+%      \markup\box\left-column {
+%        \line { $b $c $d }
+%        \line { $e $f $g $a }
+%      }
+%    #})
+% 
+% % Similarly, enclosures can be added around the graphical pedal markings
+% custom-pedal-graphic =
+% #(define-scheme-function (pedals)
+%    (markup?)
+%    "Print a graphical pedal marking"
+%    #{
+%      \markup\box $pedals
+%    #})
+% 
+% \markup\bold "advanced usage:"
+% 
+% % Harp_pedal_engraver functions when consisted to a Staff, though this is probably not the typical usage
+% \new Staff \with {
+%   \consists #Harp_pedal_engraver
+%   harpPedalStyle = #'text
+%   harpPedalTextMarkup = #custom-pedal-text
+%   harpPedalGraphicMarkup = #custom-pedal-graphic
+%   \textLengthOn % for purposes of the example
+% } \example
+% 
+% % Advanced use cases example 2
+% 
+% % Another way to persistently modify pedal markings is to create a new function with your tweaks
+% tweakedSetHarpPedals = 
+% #(define-music-function (m) (ly:music?)
+%    #{
+%      -\tweak color #red
+%      \setHarpPedals $m
+%    #})
+% 
+% % Probably the best way to deal with cues is to turn off autoupdate in your cue functions
+% fixedCueDuring = 
+% #(define-music-function (cue dir rests) (string? number? ly:music?)
+%    #{
+%      \cueDuring #cue #dir {
+%        \set GrandStaff.harpPedalAutoUpdate = ##f
+%        $rests
+%        \set GrandStaff.harpPedalAutoUpdate = ##t
+%      }
+%    #}
+%    )
+% 
+% RH = \relative c' {
+%   c1\tweakedSetHarpPedals { d c b e fis g a }
+%   R1*2
+%   \fixedCueDuring #"test" #DOWN {
+%     R1*2
+%   }
+% }
+% 
+% LH = \relative c {
+%   \clef bass
+%   R1*5
+% }
+% 
+% \new PianoStaff \with {
+%   \consists #Harp_pedal_engraver
+%   \textLengthOn % for purposes of the example
+% } <<
+%   \new Staff \RH
+%   \new Staff \LH
+% >>
