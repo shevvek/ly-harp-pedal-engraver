@@ -32,6 +32,12 @@
                  music-descriptions)
            alist<?)))
 
+#(define (define-grob! grob-name grob-entry)
+   (set! all-grob-descriptions
+         (cons ((@@ (lily) completize-grob-entry)
+                (cons grob-name grob-entry))
+               all-grob-descriptions)))
+
 % Event definitions
 
 #(define-event-class 'harp-pedal-event 'music-event)
@@ -121,6 +127,18 @@ a pair (notename . alteration) where alteration can be -1/2, 0, 1/2, or #f."
          (string-append "o" (alteration->pedal-character new-alt))
          (alteration->pedal-character old-alt))))
 
+#(define-public (ly:side-position-interface::move-to-extremal-staff-or-middle grob)
+   "Wraps the extremal staff callback. If direction is set to CENTER,
+place grobs below the top staff instead of above it."
+   (let ((dir (ly:grob-property grob 'direction))
+         (out (ly:side-position-interface::move-to-extremal-staff grob)))
+     (when (eqv? dir CENTER)
+       (ly:grob-set-property! grob 'direction DOWN)
+       ; if grobs will be placed below the top staff, add to padding to place them more in the center
+       (ly:grob-set-property! grob 'padding (+ (ly:grob-property grob 'padding)
+                                              1.5)))
+     out))
+
 text-pedal-change =
 #(define-scheme-function (d c b e f g a)
    (markup? markup? markup? markup? markup? markup? markup?)
@@ -132,31 +150,117 @@ text-pedal-change =
      }
    #})
 
+% Grob definitions
+
+#(define-grob! 'HarpPedalChart
+   `(
+      (after-line-breaking . ,ly:side-position-interface::move-to-extremal-staff-or-middle)
+      ; keep lines close together with a tiny whitespace between accidentals
+      (baseline-skip . 2.75)
+      (direction . ,UP)
+      ;; See \markLengthOn
+      (extra-spacing-width . (+inf.0 . -inf.0))
+      (outside-staff-horizontal-padding . 0.2)
+      (outside-staff-priority . 500)
+      (padding . 2)
+      (parent-alignment-X . ,RIGHT)
+      (self-alignment-X . ,RIGHT)
+      (X-align-on-main-noteheads . #f)
+      (cross-staff . #f)
+      (side-axis . ,Y)
+      (stencil . ,ly:text-interface::print)
+      (vertical-skylines . ,grob::always-vertical-skylines-from-stencil)
+      (X-offset . ,ly:self-alignment-interface::aligned-on-x-parent)
+      (Y-offset . ,side-position-interface::y-aligned-side)
+      (Y-extent . ,grob::always-Y-extent-from-stencil)
+      (meta . ((class . Item)
+               (interfaces . (accidental-switch-interface
+                              instrument-specific-markup-interface
+                              font-interface
+                              ;mark-interface
+                              outside-staff-interface
+                              self-alignment-interface
+                              side-position-interface
+                              text-interface))
+               (description . "Harp pedal diagram.")))))
+
+#(define-grob! 'HarpPedalChange
+   `(
+      (after-line-breaking . ,ly:side-position-interface::move-to-extremal-staff-or-middle)
+      ;(avoid-slur . around)
+      ;(script-priority . 200)
+      ; (slur-padding . 0.5)
+      ; (staff-padding . 0.5)      
+      (direction . ,DOWN)
+      (extra-spacing-width . (+inf.0 . -inf.0))
+      ; keep lines close together with a tiny whitespace between accidentals
+      (baseline-skip . 2.75) 
+      (outside-staff-horizontal-padding . 0.2)
+      (outside-staff-priority . 500)
+      ;; This value reduces the relative vertical displacement of grobs
+      ;; Useful one for users to tweak
+      (padding . 3.5)
+      (parent-alignment-X . ,LEFT)
+      (self-alignment-X . ,LEFT)
+      (X-align-on-main-noteheads . #f)
+      (side-axis . ,Y)
+      (cross-staff . #f)
+      (stencil . ,ly:text-interface::print)
+      (vertical-skylines . ,grob::always-vertical-skylines-from-stencil)
+      (Y-extent . ,grob::always-Y-extent-from-stencil)
+      (X-offset . ,ly:self-alignment-interface::aligned-on-x-parent)
+      (Y-offset . ,side-position-interface::y-aligned-side)
+      (meta . ((class . Item)
+               (interfaces . (accidental-switch-interface
+                              font-interface
+                              instrument-specific-markup-interface
+                              outside-staff-interface
+                              self-alignment-interface
+                              side-position-interface
+                              text-interface
+                              ;text-script-interface
+                              ))
+               (description . "Incremental harp pedal change.")))))
+
+\layout {
+  \context {
+    \Global
+    \grobdescriptions #all-grob-descriptions
+  }
+}
+
 % Context properties
 
 #(translator-property-description 'harpPedalSetting harp-pedal-alist? "The current harp pedal setting. Must be a pitch-alist 
 in L-R order of the harp pedals, containing only 1/2, 0, and -1/2 alterations.")
 #(translator-property-description 'harpPedalStyle symbol?
-   "Valid options: 'graphical, 'text, 'hybrid-circles, 'hybrid (default). With 'hybrid, incremental changes are printed as text, 
-while resets of all 7 pedals are printed graphically. 'hybrid-circles is the same but prints diagrams with circles around changes.")
+   "Style of harp pedal charts. Valid options: 'graphical (default), 'text, 'graphical-circles.")
 #(translator-property-description 'harpPedalAutoUpdate boolean?
    "If #t (default), check notes against the current pedal setting and print changes automatically.")
 #(translator-property-description 'harpPedalTextMarkup procedure?
-   "Scheme function accepting 7 markup arguments in L-R pedal order, returning a markup that formats text pedal markings.")
-#(translator-property-description 'harpPedalGraphicMarkup procedure?
-   "Scheme function accepting 1 markup and returning a markup. By default, simply returns the original markup. 
-Use this for example to add an enclosure around graphical pedal markings.")
+   "Scheme function accepting 7 markup arguments in L-R pedal order, returning a markup that formats both HarpPedalChange
+and, in 'text style HarpPedalChart.")
+#(translator-property-description 'harpPedalFixedBelow ly:pitch?
+   "Ignore pitches on this string or below when auto-updating harp pedals. Defaults to D#1.")
 
 % Engraver
 
 #(define (Harp_pedal_engraver context)
    "Listens for harp-pedal-events and prints formatted harp pedal markings. Keeps track 
 of the pedal setting and automatically updates the pedal setting when new accidentals occur,
-printing the changes. The pedal markings are TextScript grobs."
+printing the changes. Creates HarpPedalChart and HarpPedalChange grobs."
    (let ((change-alist '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f)))
-         (ev #f)
+         (cached-event #f)
          (notes '()))
 
+     (define (fixed-string? p)
+       "Takes @var{p} a ly:pitch? and returns true if p is below the cutoff pitch for harp strings
+with fixed pitch. Comparisons chosen so the flatted string above will return #f."
+       (let ((fixed-below (ly:context-property context 
+                            'harpPedalFixedBelow (ly:make-pitch -3 1 1/2))))
+         (or (ly:pitch<? p fixed-below)
+             (equal? p fixed-below))))
+     
      (define (pedals-graphic change->character)
        "Splits change-alist into left and right pedals, maps onto each the procedure 
 change->character, then concats the resulting strings and returns the resulting harp-pedal markup. 
@@ -186,7 +290,12 @@ change->character should take (notename . alteration) as an argument and return 
               "Harp_pedal_engraver: simultaneous contradictory pedal change received."))
 
           (update-alist! change-alist new-changes)
-          (set! ev event)))
+          ; If the cached event was explicit and this event was automatic, don't replace the cached one
+          ; This is in order not to discard user tweaks
+          (unless (and cached-event
+                       (eqv? 'HarpPedalEvent (ly:music-property (ly:event-property cached-event 'music-cause) 'name))
+                       (eqv? 'NoteEvent (ly:music-property (ly:event-property event 'music-cause) 'name)))
+            (set! cached-event event))))
 
        ((note-event engraver event)
         (when (ly:context-property context 'harpPedalAutoUpdate #t)
@@ -194,59 +303,53 @@ change->character should take (notename . alteration) as an argument and return 
                  (name (ly:pitch-notename p))
                  (alt (ly:pitch-alteration p))
                  (setting-alist (ly:context-property context 'harpPedalSetting #f)))
-            (set! notes (cons event notes))
-            (when (and setting-alist
-                       (not (eqv? alt
-                                  (assoc-get name setting-alist))))
-              (let ((pedal-event (ly:make-stream-event
-                                  (ly:make-event-class 'harp-pedal-event)
-                                  `((pitch-alist . ,`((,name . ,alt)))
-                                    (origin . ,(ly:event-property event 'origin))
-                                    (event-cause . ,event)))))
-                (ly:broadcast (ly:context-event-source context) pedal-event)))))))
+            (unless (fixed-string? p)
+              (set! notes (cons event notes))
+              (when (and setting-alist
+                         ; Ignore note events consistent with the pedal setting
+                         (not (eqv? alt
+                                    (assoc-get name setting-alist))))
+                (let ((pedal-event (ly:make-stream-event
+                                    (ly:make-event-class 'harp-pedal-event)
+                                    `((pitch-alist . ,`((,name . ,alt)))
+                                      (origin . ,(ly:event-property event 'origin))
+                                      (music-cause . ,(ly:event-property event 'music-cause))))))
+                  (ly:broadcast (ly:context-event-source context) pedal-event))))))))
 
       ((process-music engraver)
        ; If we got a pedal event this time step, print it. The event-cause will be the most recent event received.
-       (when ev
-         (let* ((setting-alist (ly:context-property context 'harpPedalSetting))
-                (grob (ly:engraver-make-grob engraver 'TextScript ev))
-                (style (ly:context-property context 'harpPedalStyle 'hybrid))
-                (reset? (every cdr change-alist))
-                (text-output (ly:context-property context 'harpPedalTextMarkup text-pedal-change))
-                (graphical-output (ly:context-property context 'harpPedalGraphicMarkup identity))
-                (change-markup (cond
-                                ((or (eqv? style 'text)
-                                     (and (or (eqv? style 'hybrid)
-                                              (eqv? style 'hybrid-circles))
-                                          (not reset?)))
-                                 ; doing it this way assumes that all the alist operations preserve order
-                                 (apply text-output
-                                   (map pitch-class->markup change-alist)))
+       (when cached-event
+         (let ((style (ly:context-property context 'harpPedalStyle 'graphical))
+               (setting-alist (ly:context-property context 'harpPedalSetting))
+               (reset? (every cdr change-alist)))
+           (when style
+             (let ((grob (ly:engraver-make-grob engraver (if reset? 'HarpPedalChart 'HarpPedalChange) cached-event))
+                   (dir (ly:event-property cached-event 'direction #f))
+                   (change-markup (cond
+                                   ((or (eqv? style 'text)
+                                        (not reset?))
+                                    ; doing it this way assumes that all the alist operations preserve order
+                                    (apply (ly:context-property context 'harpPedalTextMarkup text-pedal-change)
+                                      (map pitch-class->markup change-alist)))
 
-                                ; If style is graphical, or hybrid-circles and this is a full reset
-                                ; Circle changes as long as we have a previous pedal setting
-                                ((and (pair? setting-alist)
-                                      (or (eqv? style 'graphical)
-                                          (and reset? (eqv? style 'hybrid-circles))))
-                                 (graphical-output
-                                  (pedals-graphic (lambda (change)
-                                                    (change->circled-pedal-character setting-alist change)))))
+                                   ; If style is graphical-circles, it's a complete setting, and we have a previous setting
+                                   ((and (pair? setting-alist)
+                                         (eqv? style 'graphical-circles))
+                                    (pedals-graphic (lambda (change)
+                                                      (change->circled-pedal-character setting-alist change))))
 
-                                ; In hybrid style don't circle changes for full resets
-                                (else
-                                 (graphical-output
-                                  (pedals-graphic (compose alteration->pedal-character cdr)))))))
-           (ly:grob-set-property! grob 'text change-markup)
-           (ly:grob-set-property! grob 'after-line-breaking ly:side-position-interface::move-to-extremal-staff)
-           (ly:grob-set-property! grob 'outside-staff-priority 500)
-           (ly:grob-set-property! grob 'direction (ly:event-property ev 'direction DOWN))
+                                   (else
+                                    (pedals-graphic (compose alteration->pedal-character cdr))))))
+               (ly:grob-set-property! grob 'text change-markup)
+               (when dir
+                 (ly:grob-set-property! grob 'direction dir))))
            ; Update the pedal setting based on change-alist
            ; Do this after printing the changes, in case we need to print circles based on the last setting
            ; Default value of '() allows pedal setting to be initialized
            ; Check first for incomplete initialization to avoid duplicate warnings
            (if (and (not reset?)
                     (null? setting-alist))
-               (ly:input-warning (ly:event-property ev 'origin (*location*))
+               (ly:input-warning (ly:event-property cached-event 'origin (*location*))
                  "Harp_pedal_engraver: received incomplete initial pedal setting")
                (ly:context-set-property! context 'harpPedalSetting
                  (update-alist! setting-alist (filter cdr change-alist))))
@@ -265,7 +368,7 @@ change->character should take (notename . alteration) as an argument and return 
        )
 
       ((stop-translation-timestep engraver)
-       (set! ev #f)
+       (set! cached-event #f)
        (set! notes '())
        (update-alist! change-alist '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f))))
 
@@ -283,7 +386,7 @@ setHarpPedals =
 
 RH = \relative c'' {
   \clef treble
-  <>^\setHarpPedals { dis cis b e fis gis ais }
+  <>\setHarpPedals { dis cis b e fis gis ais }
   <dis fis,>2(\p <d f,> |
   <cis e,>2 <b dis,>4\setHarpPedals { fis } <ais cis,> |
   <a fis bis,>2) r |
@@ -314,13 +417,13 @@ LH = \relative c {
 RH = \relative c' {
   \key d \major
   % Start by completely setting the pedals
-  <>\setHarpPedals { d cis b e fis g a }
-  <d fis a>1
+  <>_\setHarpPedals { d ces b e fis g a }
+  <d fis a>1(
   <d a'>1
   % Explicit and implicit pedal changes will be combined into a single marking
-  <d f bes>1\setHarpPedals { bes }
+  <d f bes>1_\setHarpPedals { bes }
   % Simultaneous explicit pedal changes will also be combined
-  <des f bes>1\setHarpPedals { des }
+  <des f bes>1)\setHarpPedals { des }
   R1 
   % The order of notes entered in \setHarpPedals does not matter:
   <e g c>\setHarpPedals { c d e fis g a b }
@@ -329,6 +432,7 @@ RH = \relative c' {
 LH = \relative c {
   \clef bass
   \key d \major
+  \override PianoStaff.HarpPedalChange.direction = #CENTER
   d1
   % Pitches outside the pedal setting will trigger an automatic pedal change (from either Staff)
   % Explicit pedal changes can be entered in either Staff
@@ -337,8 +441,8 @@ LH = \relative c {
   <c aes'>1
   % Simultaneous explicit pedal changes will also be combined
   <bes ges'>1\setHarpPedals { ges }
-  R1
-  c1
+  es,,
+  dis1
 }
 
 \markup\bold "basic usage example:"
@@ -347,7 +451,7 @@ LH = \relative c {
   \consists #Harp_pedal_engraver
   % see what happens when harpPedalStyle is set to 'hybrid, 'hybrid-circles, and 'graphical
   % 'graphical is probably only useful for pedagogical materials
-  harpPedalStyle = #'hybrid-circles
+  harpPedalStyle = #'graphical-circles
   \textLengthOn % for purposes of the example
 } <<
   \new Staff \RH
