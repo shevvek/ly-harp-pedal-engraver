@@ -133,10 +133,7 @@ place grobs below the top staff instead of above it."
    (let ((dir (ly:grob-property grob 'direction))
          (out (ly:side-position-interface::move-to-extremal-staff grob)))
      (when (eqv? dir CENTER)
-       (ly:grob-set-property! grob 'direction DOWN)
-       ; if grobs will be placed below the top staff, add to padding to place them more in the center
-       (ly:grob-set-property! grob 'padding (+ (ly:grob-property grob 'padding)
-                                              1.5)))
+       (ly:grob-set-property! grob 'direction DOWN))
      out))
 
 text-pedal-change =
@@ -173,7 +170,7 @@ text-pedal-change =
       (outside-staff-horizontal-padding . 0.2)
       (outside-staff-priority . 500)
       (padding . 2)
-      (parent-alignment-X . ,RIGHT)
+      ;(parent-alignment-X . ,RIGHT)
       (self-alignment-X . ,RIGHT)
       (X-align-on-main-noteheads . #f)
       (cross-staff . #f)
@@ -188,7 +185,6 @@ text-pedal-change =
                               harp-pedal-interface
                               instrument-specific-markup-interface
                               font-interface
-                              ;mark-interface
                               outside-staff-interface
                               self-alignment-interface
                               side-position-interface
@@ -213,7 +209,7 @@ text-pedal-change =
       ;; This value reduces the relative vertical displacement of grobs
       ;; Useful one for users to tweak
       (padding . 3.5)
-      (parent-alignment-X . ,LEFT)
+     ; (parent-alignment-X . ,LEFT)
       (self-alignment-X . ,LEFT)
       (X-align-on-main-noteheads . #f)
       (side-axis . ,Y)
@@ -340,7 +336,7 @@ change->character should take (notename . alteration) as an argument and return 
                                    ((or (eqv? style 'text)
                                         (not reset?))
                                     ; doing it this way assumes that all the alist operations preserve order
-                                    (apply (ly:grob-property grob 'format-pedal-text text-pedal-change)
+                                    (apply (ly:grob-property grob 'format-pedal-text)
                                       (map pitch-class->markup change-alist)))
 
                                    ; If style is graphical-circles, it's a complete setting, and we have a previous setting
@@ -428,15 +424,15 @@ RH = \relative c' {
   \key d \major
   % Start by completely setting the pedals
   <>_\setHarpPedals { d ces b e fis g a }
-  <d fis a>1(
+  <d fis a>1
   <d a'>1
   % Explicit and implicit pedal changes will be combined into a single marking
   <d f bes>1_\setHarpPedals { bes }
   % Simultaneous explicit pedal changes will also be combined
-  <des f bes>1)\setHarpPedals { des }
-  R1 
+  <des f bes>1\setHarpPedals { des }
+  R1*2
   % The order of notes entered in \setHarpPedals does not matter:
-  <e g c>\setHarpPedals { c d e fis g a b }
+  <e g c>1\setHarpPedals { c d e fis g a b }
 }
 
 LH = \relative c {
@@ -452,8 +448,10 @@ LH = \relative c {
   <c aes'>1
   % Simultaneous explicit pedal changes will also be combined
   <bes ges'>1\setHarpPedals { ges }
-  es,,
+  % notes on the bottom fixed strings will be ignored by automatic pedal changes
+  es,,1
   dis1
+  ces1
 }
 
 \markup\bold "basic usage example:"
@@ -513,6 +511,7 @@ LH = \relative c {
   \consists #Harp_pedal_engraver
   harpPedalStyle = #'text
   \override HarpPedalChange.extra-spacing-width = #'(0 . 0)
+  \override HarpPedalChart.self-alignment-X = #CENTER
 } <<
   \new Staff \RH
   \new Staff \LH
@@ -521,7 +520,7 @@ LH = \relative c {
 % Advanced use cases
 
 testcue = \relative c' {
-  s1*3
+  s1*5
   r4 c d e
   r4 fis gis ais
 }
@@ -537,7 +536,12 @@ example = \relative c' {
   <des f bes>\setHarpPedals { des c bes es f ges aes }
   \revert Staff.HarpPedalChart.format-pedal-text
   \once\override Staff.HarpPedalChange.color = #red
-  b2\p_"foo" b'2\setHarpPedals { des c b es f g aes }
+  b2\p_"foo" r2 |
+  % unsetting harpPedalSetting can be useful before a simple passage where pedal markings are not needed
+  \unset Staff.harpPedalSetting
+  d1 |
+  \once\set Staff.harpPedalStyle = ##f
+  b'1\setHarpPedals { des c b es f g aes }
   % notes in cues will trigger automatic pedal changes
   \cueDuring #"test" #DOWN {
     R1
@@ -570,6 +574,7 @@ custom-pedal-text =
   \consists #Harp_pedal_engraver
   harpPedalStyle = #'text
   \override HarpPedalChart.extra-spacing-width = #'(0 . 0)
+  \override HarpPedalChart.self-alignment-X = #LEFT
   % Use this syntax to set the custom formatting function
   % The same method can be used to change formatting of HarpPedalChange
   \override HarpPedalChart.format-pedal-text = #(const custom-pedal-text)
