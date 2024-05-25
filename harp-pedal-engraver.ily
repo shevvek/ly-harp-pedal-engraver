@@ -1,5 +1,9 @@
 \version "2.24.0"
 
+% TODO:
+% Move style to a grob property of HarpPedalChart
+% this will require changing the control flow in process-music
+
 #(use-modules ((ice-9 list) #:select (rassoc))
    (ice-9 receive))
 
