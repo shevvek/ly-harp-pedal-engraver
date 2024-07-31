@@ -11,17 +11,20 @@
 
 % taken from "scm/define-context-properties.scm"
 #(define (translator-property-description symbol type? description)
-   (if (not (and
-             (symbol? symbol)
-             (procedure? type?)
-             (string? description)))
-       (throw 'init-format-error))
-   (if (not (equal? #f (object-property symbol 'translation-doc)))
-       (ly:error (_ "symbol ~S redefined" symbol)))
-   (set-object-property! symbol 'translation-type? type?)
-   (set-object-property! symbol 'translation-doc description)
-   (set! all-translation-properties (cons symbol all-translation-properties))
-   symbol)
+  (if (not (and
+            (symbol? symbol)
+            (procedure? type?)
+            (string? description)))
+      (throw 'init-format-error))
+
+
+  (if (not (equal? #f (object-property symbol 'translation-doc)))
+      (ly:error (G_ "symbol ~S redefined") symbol))
+
+  (set-object-property! symbol 'translation-type? type?)
+  (set-object-property! symbol 'translation-doc description)
+  (set! all-translation-properties (cons symbol all-translation-properties))
+  symbol)
 
 % from https://extending-lilypond.gitlab.io/en/extending/properties-types.html
 #(define (define-event! type properties)
