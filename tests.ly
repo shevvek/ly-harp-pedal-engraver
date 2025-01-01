@@ -1,3 +1,21 @@
+%%  Add-on for GNU LilyPond: engraver that tracks, updates, and prints harp
+%%  pedal markings based on accidentals as they appear.
+%%
+%%  Copyright (C) 2024 Saul James Tobin.
+%%
+%%  This program is free software: you can redistribute it and/or modify
+%%  it under the terms of the GNU General Public License as published by
+%%  the Free Software Foundation, either version 3 of the License, or
+%%  (at your option) any later version.
+%%
+%%  This program is distributed in the hope that it will be useful,
+%%  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%%  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%%  GNU General Public License for more details.
+%%
+%%  You should have received a copy of the GNU General Public License
+%%  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 \version "2.24.0"
 \include "harp-pedal-engraver.ily"
 
@@ -97,7 +115,7 @@ RH = \relative c' {
   % No warning from duplicate or contradictory pitches in the same \setHarpPedals
   % After the first, they are just ignored
   gis2\setHarpPedals { b b } gis2\setHarpPedals { fis f }
-  % Implicit or explicit accidentals other than flat/natural/sharp 
+  % Implicit or explicit accidentals other than flat/natural/sharp
   % will trigger a harpPedalSetting type warning
   gisis4 ais\setHarpPedals { beses } cisih cisih
 }
@@ -150,7 +168,7 @@ example = \relative c' {
   \revert Staff.HarpPedalChart.format-pedal-text
   \once\override Staff.HarpPedalChange.color = #red
   b2\p_"foo" r2 |
-  % unsetting harpPedalSetting can be useful before a simple 
+  % unsetting harpPedalSetting can be useful before a simple
   % passage where pedal markings are not needed
   \unset Staff.harpPedalSetting
   d1 |
@@ -168,7 +186,7 @@ example = \relative c' {
   }
 }
 
-% A custom text markup function can be used to reorder the note names 
+% A custom text markup function can be used to reorder the note names
 % depending on the harpist's preference
 % And to add formatting, enclosures, etc.
 custom-pedal-text =
@@ -184,7 +202,7 @@ custom-pedal-text =
 
 \markup\bold "advanced usage:"
 
-% Harp_pedal_engraver functions when consisted to a Staff, 
+% Harp_pedal_engraver functions when consisted to a Staff,
 % though this is probably not the typical usage
 \new Staff \with {
   \consists #Harp_pedal_engraver

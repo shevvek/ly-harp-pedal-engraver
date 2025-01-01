@@ -1,3 +1,21 @@
+%%  Add-on for GNU LilyPond: engraver that tracks, updates, and prints harp
+%%  pedal markings based on accidentals as they appear.
+%%
+%%  Copyright (C) 2024 Saul James Tobin.
+%%
+%%  This program is free software: you can redistribute it and/or modify
+%%  it under the terms of the GNU General Public License as published by
+%%  the Free Software Foundation, either version 3 of the License, or
+%%  (at your option) any later version.
+%%
+%%  This program is distributed in the hope that it will be useful,
+%%  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%%  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%%  GNU General Public License for more details.
+%%
+%%  You should have received a copy of the GNU General Public License
+%%  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 \version "2.24.0"
 
 % TODO:
@@ -57,7 +75,7 @@
 % Predicates
 
 #(define (harp-pedal-alist? s)
-   "Type predicate: pitch-alist with correct L-R harp pedal order 
+   "Type predicate: pitch-alist with correct L-R harp pedal order
 and valid accidentals"
    (and (alist? s)
         (equal?
@@ -126,7 +144,7 @@ to remove the extra space before flats produced by note-name->markup."
      (else "")))
 
 #(define (change->circled-pedal-character pedal-alist change)
-   "Expects @var{pedal-alist} to be a harp-pedal-alist?, and @var{change} to be 
+   "Expects @var{pedal-alist} to be a harp-pedal-alist?, and @var{change} to be
 a pair (notename . alteration) where alteration can be -1/2, 0, 1/2, or #f."
    (let ((new-alt (cdr change))
          (old-alt (assoc-get (car change) pedal-alist)))
@@ -254,24 +272,24 @@ text-pedal-change =
 % Context properties
 
 #(translator-property-description 'harpPedalSetting harp-pedal-alist?
-   "The current harp pedal setting. Must be a pitch-alist in L-R order 
+   "The current harp pedal setting. Must be a pitch-alist in L-R order
 of the harp pedals, containing only 1/2, 0, and -1/2 alterations.")
 #(translator-property-description 'harpPedalStyle symbol?
-   "Style of harp pedal charts. Valid options: 'graphical (default), 'text, 
+   "Style of harp pedal charts. Valid options: 'graphical (default), 'text,
 'graphical-circles.")
 #(translator-property-description 'harpPedalAutoUpdate boolean?
-   "If #t (default), check notes against the current pedal setting and print 
+   "If #t (default), check notes against the current pedal setting and print
 changes automatically.")
 #(translator-property-description 'harpPedalFixedBelow ly:pitch?
-   "Ignore pitches on this string or below when auto-updating harp pedals. 
+   "Ignore pitches on this string or below when auto-updating harp pedals.
 Defaults to D#1.")
 
 % Engraver
 
 #(define (Harp_pedal_engraver context)
-   "Listens for harp-pedal-events and prints formatted harp pedal markings. 
-Keeps track of the pedal setting and automatically updates the pedal setting 
-when new accidentals occur, printing the changes. Creates HarpPedalChart and 
+   "Listens for harp-pedal-events and prints formatted harp pedal markings.
+Keeps track of the pedal setting and automatically updates the pedal setting
+when new accidentals occur, printing the changes. Creates HarpPedalChart and
 HarpPedalChange grobs."
    (let ((change-alist
           '((1 . #f) (0 . #f) (6 . #f) (2 . #f) (3 . #f) (4 . #f) (5 . #f)))
@@ -279,8 +297,8 @@ HarpPedalChange grobs."
          (notes '()))
 
      (define (fixed-string? p)
-       "Takes @var{p} a ly:pitch? and returns true if p is below the cutoff 
-pitch for harp strings with fixed pitch. Comparisons chosen so the flatted 
+       "Takes @var{p} a ly:pitch? and returns true if p is below the cutoff
+pitch for harp strings with fixed pitch. Comparisons chosen so the flatted
 string above will return #f."
        (let ((fixed-below (ly:context-property context
                             'harpPedalFixedBelow (ly:make-pitch -3 1 1/2))))
@@ -288,9 +306,9 @@ string above will return #f."
              (equal? p fixed-below))))
 
      (define (pedals-graphic change->character)
-       "Splits change-alist into left and right pedals, maps onto each 
-the procedure change->character, then concats the resulting strings and returns 
-the resulting harp-pedal markup. change->character should take 
+       "Splits change-alist into left and right pedals, maps onto each
+the procedure change->character, then concats the resulting strings and returns
+the resulting harp-pedal markup. change->character should take
 (notename . alteration) as an argument and return a string."
        (receive (left right)
          (partition (lambda (el)
@@ -299,10 +317,10 @@ the resulting harp-pedal markup. change->character should take
                           (= 6 (car el))))
            change-alist)
          (markup #:harp-pedal (string-append
-                               (string-concatenate 
+                               (string-concatenate
                                 (map change->character left))
                                "|"
-                               (string-concatenate 
+                               (string-concatenate
                                 (map change->character right))))))
 
      (make-engraver
